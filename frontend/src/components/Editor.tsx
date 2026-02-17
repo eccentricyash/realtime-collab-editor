@@ -27,7 +27,7 @@ function getWsUrl(): string {
     return `${wsProtocol}//localhost:3001/ws/documents`;
   }
   // In production, use VITE_BACKEND_URL if set (e.g. Render backend URL)
-  const backendUrl = import.meta.env.VITE_BACKEND_URL;
+  const backendUrl = (import.meta.env.VITE_BACKEND_URL || '').trim();
   if (backendUrl) {
     const host = backendUrl.replace(/^https?:\/\//, '');
     return `${wsProtocol}//${host}/ws/documents`;

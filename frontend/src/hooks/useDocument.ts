@@ -1,9 +1,8 @@
 import { useEffect } from 'react';
 import { useDocumentStore } from '../store/documentStore';
 
-const API_BASE = import.meta.env.VITE_BACKEND_URL
-  ? `${import.meta.env.VITE_BACKEND_URL}/api`
-  : '/api';
+const _backendUrl = (import.meta.env.VITE_BACKEND_URL || '').trim();
+const API_BASE = _backendUrl ? `${_backendUrl}/api` : '/api';
 
 export function useDocument(documentId: string): void {
   const setCurrentDocument = useDocumentStore((s) => s.setCurrentDocument);
