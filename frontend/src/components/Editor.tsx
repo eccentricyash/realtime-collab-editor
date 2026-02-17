@@ -9,6 +9,7 @@ import { WebsocketProvider } from 'y-websocket';
 import { useDocumentStore } from '../store/documentStore';
 import { useAuthStore } from '../store/authStore';
 import { useCommentStore } from '../store/commentStore';
+import { API_BASE } from '../utils/api';
 import { CommentMark } from '../extensions/CommentMark';
 import Toolbar from './Toolbar';
 import PresenceList from './PresenceList';
@@ -182,8 +183,37 @@ export default function Editor({ documentId, username, userColor, permission, sh
     }
     const provider = new WebsocketProvider(wsUrl, documentId, ydoc, { params });
 
+    // Helper to update the provider's internal URL with a fresh token
+    const updateProviderToken = (newToken: string) => {
+      const base = `${wsUrl}/${documentId}`;
+      (provider as any).url = `${base}?token=${encodeURIComponent(newToken)}`;
+    };
+
+    // Silently refresh the access token via refresh cookie
+    const refreshAccessToken = async (): Promise<string | null> => {
+      try {
+        const res = await fetch(`${API_BASE}/auth/refresh`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        useAuthStore.getState().setAuth(data.user, data.accessToken);
+        return data.accessToken as string;
+      } catch {
+        return null;
+      }
+    };
+
     const handleStatus = ({ status }: { status: string }) => {
       setConnectionStatus(status === 'connected');
+
+      // On disconnect, refresh token so the next reconnect uses a valid one
+      if (status === 'disconnected' && !shareToken) {
+        refreshAccessToken().then((newToken) => {
+          if (newToken) updateProviderToken(newToken);
+        });
+      }
     };
     const handleSync = (isSynced: boolean) => {
       setSyncStatus(isSynced);
@@ -196,9 +226,19 @@ export default function Editor({ documentId, username, userColor, permission, sh
       setSyncStatus(true);
     }
 
+    // Proactively refresh token every 13 minutes (token expires at 15 min)
+    let refreshInterval: ReturnType<typeof setInterval> | null = null;
+    if (!shareToken) {
+      refreshInterval = setInterval(async () => {
+        const newToken = await refreshAccessToken();
+        if (newToken) updateProviderToken(newToken);
+      }, 13 * 60 * 1000);
+    }
+
     setCollab({ ydoc, provider });
 
     return () => {
+      if (refreshInterval) clearInterval(refreshInterval);
       provider.off('status', handleStatus);
       provider.off('sync', handleSync);
       provider.destroy();
