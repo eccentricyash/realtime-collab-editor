@@ -11,12 +11,15 @@ import { MESSAGE_SYNC, MESSAGE_AWARENESS, type ConnectedClient, type DocumentRoo
 const SERVER_ID = process.env.SERVER_ID || 'server-' + Math.random().toString(36).substring(2, 11);
 const SAVE_DEBOUNCE_MS = 5000;
 const SEPARATOR = 0x7C; // '|' character code
+const WS_RATE_LIMIT = 30; // max messages per second per connection
+const WS_RATE_WINDOW = 1000; // 1 second
 
 class DocumentHandler {
   private docs: Map<string, Y.Doc> = new Map();
   private rooms: Map<string, DocumentRoom> = new Map();
   private awarenesses: Map<string, awarenessProtocol.Awareness> = new Map();
   private pendingDocs: Map<string, Promise<Y.Doc>> = new Map();
+  private messageCounts: Map<string, { count: number; resetAt: number }> = new Map();
 
   async getOrCreateDoc(documentId: string): Promise<Y.Doc> {
     const existing = this.docs.get(documentId);
@@ -135,6 +138,16 @@ class DocumentHandler {
   ): void {
     const doc = this.docs.get(documentId);
     if (!doc) return;
+
+    // WebSocket rate limiting: drop excess messages
+    const now = Date.now();
+    let counter = this.messageCounts.get(connectionId);
+    if (!counter || now >= counter.resetAt) {
+      counter = { count: 0, resetAt: now + WS_RATE_WINDOW };
+      this.messageCounts.set(connectionId, counter);
+    }
+    counter.count++;
+    if (counter.count > WS_RATE_LIMIT) return;
 
     // Check permission: view-only users can only send sync step 1 (state vector)
     // and awareness updates — NOT document modifications
@@ -356,6 +369,7 @@ class DocumentHandler {
     if (!room) return;
 
     room.clients.delete(connectionId);
+    this.messageCounts.delete(connectionId);
     console.log(`[DocumentHandler] Client ${connectionId} left document ${documentId} (${room.clients.size} remaining)`);
 
     // If no more clients, save and clean up

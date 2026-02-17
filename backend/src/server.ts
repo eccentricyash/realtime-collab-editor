@@ -10,6 +10,7 @@ import prisma from './db/prismaClient';
 import authRouter from './routes/auth';
 import { documentShareRouter, sharedAccessRouter } from './routes/documents';
 import { requireAuth, AuthRequest } from './middleware/auth';
+import { authLimiter, apiLimiter } from './middleware/rateLimiter';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -30,8 +31,11 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', serverId: process.env.SERVER_ID || 'local' });
 });
 
-// Auth routes (public)
-app.use('/api/auth', authRouter);
+// Auth routes (public, rate limited)
+app.use('/api/auth', authLimiter, authRouter);
+
+// Rate limit document API routes
+app.use('/api/documents', apiLimiter);
 
 // Share management routes (protected, under /api/documents)
 app.use('/api/documents', documentShareRouter);
