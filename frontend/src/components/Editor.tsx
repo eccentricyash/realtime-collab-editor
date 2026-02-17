@@ -174,45 +174,55 @@ export default function Editor({ documentId, username, userColor, permission, sh
     const ydoc = new Y.Doc();
     const wsUrl = getWsUrl();
 
-    const accessToken = useAuthStore.getState().accessToken;
     const params: Record<string, string> = {};
     if (shareToken) {
       params.shareToken = shareToken;
-    } else if (accessToken) {
-      params.token = accessToken;
+    } else {
+      const accessToken = useAuthStore.getState().accessToken;
+      if (accessToken) params.token = accessToken;
     }
-    const provider = new WebsocketProvider(wsUrl, documentId, ydoc, { params });
 
-    // Helper to update the provider's internal URL with a fresh token
-    const updateProviderToken = (newToken: string) => {
-      const base = `${wsUrl}/${documentId}`;
-      (provider as any).url = `${base}?token=${encodeURIComponent(newToken)}`;
-    };
+    // Custom WebSocket wrapper: on every reconnect, injects the latest
+    // access token from the auth store into the URL query params.
+    // This ensures reconnects after token expiry use a fresh token.
+    const TokenWebSocket = shareToken
+      ? WebSocket
+      : class extends WebSocket {
+          constructor(url: string | URL, protocols?: string | string[]) {
+            const urlObj = new URL(url.toString());
+            const freshToken = useAuthStore.getState().accessToken;
+            if (freshToken) {
+              urlObj.searchParams.set('token', freshToken);
+            }
+            super(urlObj.toString(), protocols);
+          }
+        };
+
+    const provider = new WebsocketProvider(wsUrl, documentId, ydoc, {
+      params,
+      WebSocketPolyfill: TokenWebSocket as any,
+    });
 
     // Silently refresh the access token via refresh cookie
-    const refreshAccessToken = async (): Promise<string | null> => {
+    const refreshAccessToken = async (): Promise<void> => {
       try {
         const res = await fetch(`${API_BASE}/auth/refresh`, {
           method: 'POST',
           credentials: 'include',
         });
-        if (!res.ok) return null;
+        if (!res.ok) return;
         const data = await res.json();
         useAuthStore.getState().setAuth(data.user, data.accessToken);
-        return data.accessToken as string;
       } catch {
-        return null;
+        // ignore
       }
     };
 
     const handleStatus = ({ status }: { status: string }) => {
       setConnectionStatus(status === 'connected');
-
-      // On disconnect, refresh token so the next reconnect uses a valid one
+      // On disconnect, refresh token so next reconnect (via TokenWebSocket) has a valid one
       if (status === 'disconnected' && !shareToken) {
-        refreshAccessToken().then((newToken) => {
-          if (newToken) updateProviderToken(newToken);
-        });
+        refreshAccessToken();
       }
     };
     const handleSync = (isSynced: boolean) => {
@@ -229,10 +239,7 @@ export default function Editor({ documentId, username, userColor, permission, sh
     // Proactively refresh token every 13 minutes (token expires at 15 min)
     let refreshInterval: ReturnType<typeof setInterval> | null = null;
     if (!shareToken) {
-      refreshInterval = setInterval(async () => {
-        const newToken = await refreshAccessToken();
-        if (newToken) updateProviderToken(newToken);
-      }, 13 * 60 * 1000);
+      refreshInterval = setInterval(refreshAccessToken, 13 * 60 * 1000);
     }
 
     setCollab({ ydoc, provider });
