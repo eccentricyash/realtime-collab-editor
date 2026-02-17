@@ -132,7 +132,7 @@ export function createWebSocketServer(httpServer: HttpServer): WebSocketServer {
       let permission: 'owner' | 'edit' | 'view' = 'view';
 
       if (authUser) {
-        // Authenticated user
+        // Authenticated user (may also have a shareToken for permission)
         const user = await prisma.user.findUnique({ where: { id: authUser.userId } });
         if (!user) {
           ws.close(4001, 'User not found');
@@ -144,19 +144,31 @@ export function createWebSocketServer(httpServer: HttpServer): WebSocketServer {
 
         if (docMeta.ownerId === user.id) {
           permission = 'owner';
+        } else if (shareTokenValue) {
+          // Use the specific share token to determine permission
+          const share = await prisma.documentShare.findUnique({ where: { token: shareTokenValue } });
+          if (!share || share.documentId !== parsedDocId) {
+            ws.close(4003, 'Invalid share link');
+            return;
+          }
+          if (share.expiresAt && share.expiresAt < new Date()) {
+            ws.close(4003, 'Share link expired');
+            return;
+          }
+          permission = share.permission as 'edit' | 'view';
         } else {
-          // Check if user has a share
+          // No share token — check if any share exists for this doc
           const share = await prisma.documentShare.findFirst({
             where: { documentId: parsedDocId },
           });
-          permission = share?.permission === 'edit' ? 'edit' : (share ? 'view' : 'view');
-          if (!share && docMeta.ownerId !== user.id) {
+          if (!share) {
             ws.close(4003, 'Access denied');
             return;
           }
+          permission = share.permission === 'edit' ? 'edit' : 'view';
         }
       } else if (shareTokenValue) {
-        // Share token access
+        // Anonymous share token access
         const share = await prisma.documentShare.findUnique({ where: { token: shareTokenValue } });
         if (!share || share.documentId !== parsedDocId) {
           ws.close(4003, 'Invalid share link');

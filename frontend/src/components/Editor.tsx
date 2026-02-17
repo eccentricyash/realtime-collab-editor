@@ -177,26 +177,25 @@ export default function Editor({ documentId, username, userColor, permission, sh
     const params: Record<string, string> = {};
     if (shareToken) {
       params.shareToken = shareToken;
-    } else {
-      const accessToken = useAuthStore.getState().accessToken;
-      if (accessToken) params.token = accessToken;
+    }
+    const accessToken = useAuthStore.getState().accessToken;
+    if (accessToken) {
+      params.token = accessToken;
     }
 
     // Custom WebSocket wrapper: on every reconnect, injects the latest
     // access token from the auth store into the URL query params.
     // This ensures reconnects after token expiry use a fresh token.
-    const TokenWebSocket = shareToken
-      ? WebSocket
-      : class extends WebSocket {
-          constructor(url: string | URL, protocols?: string | string[]) {
-            const urlObj = new URL(url.toString());
-            const freshToken = useAuthStore.getState().accessToken;
-            if (freshToken) {
-              urlObj.searchParams.set('token', freshToken);
-            }
-            super(urlObj.toString(), protocols);
-          }
-        };
+    const TokenWebSocket = class extends WebSocket {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        const urlObj = new URL(url.toString());
+        const freshToken = useAuthStore.getState().accessToken;
+        if (freshToken) {
+          urlObj.searchParams.set('token', freshToken);
+        }
+        super(urlObj.toString(), protocols);
+      }
+    };
 
     const provider = new WebsocketProvider(wsUrl, documentId, ydoc, {
       params,
@@ -221,7 +220,7 @@ export default function Editor({ documentId, username, userColor, permission, sh
     const handleStatus = ({ status }: { status: string }) => {
       setConnectionStatus(status === 'connected');
       // On disconnect, refresh token so next reconnect (via TokenWebSocket) has a valid one
-      if (status === 'disconnected' && !shareToken) {
+      if (status === 'disconnected') {
         refreshAccessToken();
       }
     };
@@ -238,9 +237,7 @@ export default function Editor({ documentId, username, userColor, permission, sh
 
     // Proactively refresh token every 13 minutes (token expires at 15 min)
     let refreshInterval: ReturnType<typeof setInterval> | null = null;
-    if (!shareToken) {
-      refreshInterval = setInterval(refreshAccessToken, 13 * 60 * 1000);
-    }
+    refreshInterval = setInterval(refreshAccessToken, 13 * 60 * 1000);
 
     setCollab({ ydoc, provider });
 

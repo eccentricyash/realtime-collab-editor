@@ -134,7 +134,7 @@ export default function SharedDocumentPage() {
             username={displayName}
             userColor={displayColor}
             permission={sharedInfo.permission}
-            shareToken={isAuthenticated ? undefined : sharedInfo.shareToken}
+            shareToken={sharedInfo.shareToken}
           />
         </div>
       </main>
