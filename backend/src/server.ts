@@ -10,6 +10,7 @@ import prisma from './db/prismaClient';
 import authRouter from './routes/auth';
 import { documentShareRouter, sharedAccessRouter } from './routes/documents';
 import { versionRouter } from './routes/versions';
+import { commentRouter } from './routes/comments';
 import { requireAuth, AuthRequest } from './middleware/auth';
 import { authLimiter, apiLimiter } from './middleware/rateLimiter';
 
@@ -43,6 +44,9 @@ app.use('/api/documents', documentShareRouter);
 // Version routes (under /api/documents and /api for version-specific endpoints)
 app.use('/api/documents', versionRouter);
 app.use('/api', versionRouter);
+// Comment routes (under /api/documents for doc-scoped, /api for comment-specific)
+app.use('/api/documents', commentRouter);
+app.use('/api', commentRouter);
 // Public shared document access (under /api)
 app.use('/api', sharedAccessRouter);
 

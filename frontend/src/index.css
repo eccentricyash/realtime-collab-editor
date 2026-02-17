@@ -102,6 +102,18 @@
   word-break: normal;
 }
 
+/* Comment highlight styles */
+.comment-highlight {
+  background-color: rgba(253, 224, 71, 0.35);
+  border-bottom: 2px solid rgba(234, 179, 8, 0.6);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.comment-highlight:hover {
+  background-color: rgba(253, 224, 71, 0.55);
+}
+
 .collaboration-cursor__label {
   border-radius: 3px 3px 3px 0;
   color: #fff;

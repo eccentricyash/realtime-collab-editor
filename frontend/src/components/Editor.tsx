@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, BubbleMenu } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
@@ -8,6 +8,8 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { useDocumentStore } from '../store/documentStore';
 import { useAuthStore } from '../store/authStore';
+import { useCommentStore } from '../store/commentStore';
+import { CommentMark } from '../extensions/CommentMark';
 import Toolbar from './Toolbar';
 import PresenceList from './PresenceList';
 
@@ -55,6 +57,9 @@ function CollaborativeEditor({
   permission?: 'owner' | 'edit' | 'view';
 }) {
   const isViewOnly = permission === 'view';
+  const setSidebarOpen = useCommentStore((s) => s.setSidebarOpen);
+  const setActiveComment = useCommentStore((s) => s.setActiveComment);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -73,11 +78,24 @@ function CollaborativeEditor({
       Placeholder.configure({
         placeholder: isViewOnly ? '' : 'Start writing...',
       }),
+      CommentMark,
     ],
     editable: !isViewOnly,
     editorProps: {
       attributes: {
         class: 'tiptap',
+      },
+      handleClick: (_view, _pos, event) => {
+        const target = event.target as HTMLElement;
+        const commentSpan = target.closest('[data-comment-id]');
+        if (commentSpan) {
+          const commentId = commentSpan.getAttribute('data-comment-id');
+          if (commentId) {
+            setActiveComment(commentId);
+            setSidebarOpen(true);
+          }
+        }
+        return false;
       },
     },
   });
@@ -110,8 +128,32 @@ function CollaborativeEditor({
           <PresenceList provider={collab.provider} currentUsername={username} />
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto relative">
         <EditorContent editor={editor} />
+        {editor && !isViewOnly && (
+          <BubbleMenu
+            editor={editor}
+            tippyOptions={{ duration: 100 }}
+            shouldShow={({ editor: e }) => {
+              return !e.state.selection.empty && !e.isActive('commentMark');
+            }}
+          >
+            <button
+              onClick={() => {
+                const commentId = crypto.randomUUID();
+                editor.chain().focus().setComment(commentId).run();
+                setActiveComment(commentId);
+                setSidebarOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-lg shadow-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              Comment
+            </button>
+          </BubbleMenu>
+        )}
       </div>
     </div>
   );

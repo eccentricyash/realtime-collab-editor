@@ -3,10 +3,12 @@ import { useParams, Link, Navigate } from 'react-router-dom';
 import Editor from '../components/Editor';
 import ShareModal from '../components/ShareModal';
 import VersionHistoryPanel from '../components/VersionHistoryPanel';
+import CommentSidebar from '../components/CommentSidebar';
 import { useDocument } from '../hooks/useDocument';
 import { useDocumentStore } from '../store/documentStore';
 import { useAuthStore } from '../store/authStore';
 import { useVersionStore } from '../store/versionStore';
+import { useCommentStore } from '../store/commentStore';
 
 export default function EditorPage() {
   const { documentId } = useParams<{ documentId: string }>();
@@ -20,6 +22,7 @@ export default function EditorPage() {
   const versionPanelOpen = useVersionStore((s) => s.isOpen);
   const setVersionPanelOpen = useVersionStore((s) => s.setOpen);
   const previewHtml = useVersionStore((s) => s.previewHtml);
+  const commentSidebarOpen = useCommentStore((s) => s.isSidebarOpen);
 
   // Track reconnection to show a brief "Reconnected" toast
   const [showReconnected, setShowReconnected] = useState(false);
@@ -158,6 +161,9 @@ export default function EditorPage() {
             </div>
           )}
         </div>
+        {commentSidebarOpen && (
+          <CommentSidebar documentId={documentId} />
+        )}
         {versionPanelOpen && (
           <VersionHistoryPanel documentId={documentId} />
         )}
