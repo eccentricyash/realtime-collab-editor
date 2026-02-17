@@ -8,6 +8,7 @@ import { documentService } from './services/documentService';
 import { documentHandler } from './websocket/documentHandler';
 import prisma from './db/prismaClient';
 import authRouter from './routes/auth';
+import { documentShareRouter, sharedAccessRouter } from './routes/documents';
 import { requireAuth, AuthRequest } from './middleware/auth';
 
 const app = express();
@@ -31,6 +32,11 @@ app.get('/api/health', (_req, res) => {
 
 // Auth routes (public)
 app.use('/api/auth', authRouter);
+
+// Share management routes (protected, under /api/documents)
+app.use('/api/documents', documentShareRouter);
+// Public shared document access (under /api)
+app.use('/api', sharedAccessRouter);
 
 // Protected document routes
 app.post('/api/documents', requireAuth, async (req: AuthRequest, res: Response) => {

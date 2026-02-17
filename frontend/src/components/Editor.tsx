@@ -15,6 +15,8 @@ interface EditorProps {
   documentId: string;
   username: string;
   userColor: string;
+  permission?: 'owner' | 'edit' | 'view';
+  shareToken?: string;
 }
 
 interface CollaborationState {
@@ -45,11 +47,14 @@ function CollaborativeEditor({
   collab,
   username,
   userColor,
+  permission = 'owner',
 }: {
   collab: CollaborationState;
   username: string;
   userColor: string;
+  permission?: 'owner' | 'edit' | 'view';
 }) {
+  const isViewOnly = permission === 'view';
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -66,9 +71,10 @@ function CollaborativeEditor({
         },
       }),
       Placeholder.configure({
-        placeholder: 'Start writing...',
+        placeholder: isViewOnly ? '' : 'Start writing...',
       }),
     ],
+    editable: !isViewOnly,
     editorProps: {
       attributes: {
         class: 'tiptap',
@@ -91,7 +97,15 @@ function CollaborativeEditor({
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50">
-        <Toolbar editor={editor} />
+        {isViewOnly ? (
+          <div className="px-3 py-2">
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-600">
+              View only
+            </span>
+          </div>
+        ) : (
+          <Toolbar editor={editor} />
+        )}
         <div className="pr-3">
           <PresenceList provider={collab.provider} currentUsername={username} />
         </div>
@@ -107,7 +121,7 @@ function CollaborativeEditor({
  * Parent component: manages ydoc + provider lifecycle.
  * Renders CollaborativeEditor only after collab is ready.
  */
-export default function Editor({ documentId, username, userColor }: EditorProps) {
+export default function Editor({ documentId, username, userColor, permission, shareToken }: EditorProps) {
   const setConnectionStatus = useDocumentStore((s) => s.setConnectionStatus);
   const setSyncStatus = useDocumentStore((s) => s.setSyncStatus);
 
@@ -117,10 +131,14 @@ export default function Editor({ documentId, username, userColor }: EditorProps)
     const ydoc = new Y.Doc();
     const wsUrl = getWsUrl();
 
-    const token = useAuthStore.getState().accessToken;
-    const provider = new WebsocketProvider(wsUrl, documentId, ydoc, {
-      params: token ? { token } : { username },
-    });
+    const accessToken = useAuthStore.getState().accessToken;
+    const params: Record<string, string> = {};
+    if (shareToken) {
+      params.shareToken = shareToken;
+    } else if (accessToken) {
+      params.token = accessToken;
+    }
+    const provider = new WebsocketProvider(wsUrl, documentId, ydoc, { params });
 
     const handleStatus = ({ status }: { status: string }) => {
       setConnectionStatus(status === 'connected');
@@ -147,7 +165,7 @@ export default function Editor({ documentId, username, userColor }: EditorProps)
       setConnectionStatus(false);
       setSyncStatus(false);
     };
-  }, [documentId, username, setConnectionStatus, setSyncStatus]);
+  }, [documentId, username, shareToken, setConnectionStatus, setSyncStatus]);
 
   if (!collab) {
     return (
@@ -162,6 +180,7 @@ export default function Editor({ documentId, username, userColor }: EditorProps)
       collab={collab}
       username={username}
       userColor={userColor}
+      permission={permission}
     />
   );
 }

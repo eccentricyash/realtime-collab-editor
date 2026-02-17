@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useDocumentStore } from '../store/documentStore';
+import ShareModal from './ShareModal';
 
 function SkeletonRow() {
   return (
@@ -19,6 +20,7 @@ export default function DocumentList() {
   const [newTitle, setNewTitle] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sharingId, setSharingId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -137,24 +139,48 @@ export default function DocumentList() {
                   </button>
                 </div>
               ) : (
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDeletingId(doc.id);
-                  }}
-                  className="ml-4 p-1.5 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 rounded hover:bg-red-50"
-                  title="Delete document"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                  </svg>
-                </button>
+                <div className="flex items-center gap-1 ml-4 opacity-0 group-hover:opacity-100">
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setSharingId(doc.id);
+                    }}
+                    className="p-1.5 text-gray-400 hover:text-blue-500 transition-colors rounded hover:bg-blue-50"
+                    title="Share document"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="18" cy="5" r="3" />
+                      <circle cx="6" cy="12" r="3" />
+                      <circle cx="18" cy="19" r="3" />
+                      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDeletingId(doc.id);
+                    }}
+                    className="p-1.5 text-gray-400 hover:text-red-500 transition-colors rounded hover:bg-red-50"
+                    title="Delete document"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    </svg>
+                  </button>
+                </div>
               )}
             </Link>
           ))}
         </div>
+      )}
+
+      {/* Share modal */}
+      {sharingId && (
+        <ShareModal documentId={sharingId} onClose={() => setSharingId(null)} />
       )}
     </div>
   );

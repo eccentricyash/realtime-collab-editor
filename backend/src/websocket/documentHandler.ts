@@ -130,11 +130,16 @@ class DocumentHandler {
   handleMessage(
     ws: WebSocket,
     documentId: string,
-    _connectionId: string,
+    connectionId: string,
     data: Uint8Array
   ): void {
     const doc = this.docs.get(documentId);
     if (!doc) return;
+
+    // Check permission: view-only users can only send sync step 1 (state vector)
+    // and awareness updates — NOT document modifications
+    const room = this.rooms.get(documentId);
+    const client = room?.clients.get(connectionId);
 
     try {
       const decoder = decoding.createDecoder(data);
@@ -142,9 +147,20 @@ class DocumentHandler {
 
       switch (messageType) {
         case MESSAGE_SYNC: {
+          // Peek at the sync message type to check if it's an update (type 2)
+          const syncMessageType = decoding.readVarUint(decoder);
+
+          if (syncMessageType === 2 && client?.permission === 'view') {
+            // SyncStep2 update from view-only user — silently drop
+            return;
+          }
+
+          // Re-create decoder with full data to let syncProtocol process it
+          const fullDecoder = decoding.createDecoder(data);
+          decoding.readVarUint(fullDecoder); // skip messageType
           const encoder = encoding.createEncoder();
           encoding.writeVarUint(encoder, MESSAGE_SYNC);
-          syncProtocol.readSyncMessage(decoder, encoder, doc, ws);
+          syncProtocol.readSyncMessage(fullDecoder, encoder, doc, ws);
           // If the encoder has response data (e.g. SyncStep2 reply), send it back
           if (encoding.length(encoder) > 1) {
             if (ws.readyState === ws.OPEN) {
