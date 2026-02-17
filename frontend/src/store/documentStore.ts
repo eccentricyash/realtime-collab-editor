@@ -35,7 +35,9 @@ interface DocumentState {
   deleteDocument: (id: string) => Promise<void>;
 }
 
-const API_BASE = '/api';
+const API_BASE = import.meta.env.VITE_BACKEND_URL
+  ? `${import.meta.env.VITE_BACKEND_URL}/api`
+  : '/api';
 
 export const useDocumentStore = create<DocumentState>((set) => ({
   documents: [],
