@@ -4,6 +4,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { documentHandler } from './documentHandler';
 import { redisSubscriber } from '../redis/redisSubscriber';
 import { documentService } from '../services/documentService';
+import { authService } from '../services/authService';
+import prisma from '../db/prismaClient';
 import type { ConnectedClient } from '../utils/types';
 
 interface ExtendedWebSocket extends WebSocket {
@@ -19,6 +21,31 @@ export function createWebSocketServer(httpServer: HttpServer): WebSocketServer {
 
     // Only handle /ws/documents/* paths
     if (url.pathname.startsWith('/ws/documents/')) {
+      // Verify JWT token before upgrade
+      const token = url.searchParams.get('token');
+      const shareToken = url.searchParams.get('shareToken');
+
+      if (!token && !shareToken) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      if (token) {
+        try {
+          const payload = authService.verifyAccessToken(token);
+          (request as any).authUser = payload;
+        } catch {
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+      }
+
+      if (shareToken) {
+        (request as any).shareToken = shareToken;
+      }
+
       wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit('connection', ws, request);
       });
@@ -38,8 +65,6 @@ export function createWebSocketServer(httpServer: HttpServer): WebSocketServer {
     let closedDuringSetup = false;
 
     // Buffer messages that arrive before async setup completes.
-    // y-websocket sends SyncStep1 immediately on open — without buffering,
-    // it would be dropped since ws.on('message') fires before handleConnection finishes.
     const messageQueue: Array<{ data: Buffer | ArrayBuffer | Buffer[]; isBinary: boolean }> = [];
 
     const processMessage = (data: Buffer | ArrayBuffer | Buffer[], isBinary: boolean) => {
@@ -66,7 +91,6 @@ export function createWebSocketServer(httpServer: HttpServer): WebSocketServer {
 
     ws.on('close', async () => {
       if (!documentId) {
-        // Setup hasn't assigned documentId yet — flag for cleanup after setup
         closedDuringSetup = true;
         return;
       }
@@ -82,7 +106,6 @@ export function createWebSocketServer(httpServer: HttpServer): WebSocketServer {
     });
 
     try {
-      // Parse URL: /ws/documents/{documentId}?username={username}
       const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
       const pathSegments = url.pathname.split('/').filter(Boolean);
 
@@ -92,7 +115,8 @@ export function createWebSocketServer(httpServer: HttpServer): WebSocketServer {
       }
 
       const parsedDocId = pathSegments[2];
-      const username = url.searchParams.get('username') || 'Anonymous';
+      const authUser = (req as any).authUser;
+      const shareTokenValue = (req as any).shareToken;
 
       // Verify document exists
       const docMeta = await documentService.getDocumentMetadata(parsedDocId);
@@ -101,13 +125,58 @@ export function createWebSocketServer(httpServer: HttpServer): WebSocketServer {
         return;
       }
 
-      // Get or create user
-      const user = await documentService.getOrCreateUser(username);
+      // Determine user and permission
+      let userId: string;
+      let username: string;
+      let color: string;
+      let permission: 'owner' | 'edit' | 'view' = 'view';
 
-      // Set documentId now that we've validated it
+      if (authUser) {
+        // Authenticated user
+        const user = await prisma.user.findUnique({ where: { id: authUser.userId } });
+        if (!user) {
+          ws.close(4001, 'User not found');
+          return;
+        }
+        userId = user.id;
+        username = user.username;
+        color = user.color;
+
+        if (docMeta.ownerId === user.id) {
+          permission = 'owner';
+        } else {
+          // Check if user has a share
+          const share = await prisma.documentShare.findFirst({
+            where: { documentId: parsedDocId },
+          });
+          permission = share?.permission === 'edit' ? 'edit' : (share ? 'view' : 'view');
+          if (!share && docMeta.ownerId !== user.id) {
+            ws.close(4003, 'Access denied');
+            return;
+          }
+        }
+      } else if (shareTokenValue) {
+        // Share token access
+        const share = await prisma.documentShare.findUnique({ where: { token: shareTokenValue } });
+        if (!share || share.documentId !== parsedDocId) {
+          ws.close(4003, 'Invalid share link');
+          return;
+        }
+        if (share.expiresAt && share.expiresAt < new Date()) {
+          ws.close(4003, 'Share link expired');
+          return;
+        }
+        permission = share.permission as 'edit' | 'view';
+        userId = `anon-${connectionId}`;
+        username = 'Anonymous';
+        color = '#9CA3AF';
+      } else {
+        ws.close(4001, 'Authentication required');
+        return;
+      }
+
       documentId = parsedDocId;
 
-      // If WebSocket closed during async setup, clean up and bail
       if (closedDuringSetup) {
         console.log(`[WS] Client ${connectionId} closed during setup for document ${documentId}`);
         return;
@@ -115,10 +184,11 @@ export function createWebSocketServer(httpServer: HttpServer): WebSocketServer {
 
       const client: ConnectedClient = {
         ws,
-        userId: user.id,
-        username: user.username,
-        color: user.color,
+        userId,
+        username,
+        color,
         documentId,
+        permission,
       };
 
       // Subscribe to Redis channels for cross-instance sync
@@ -127,7 +197,7 @@ export function createWebSocketServer(httpServer: HttpServer): WebSocketServer {
       // Initialize connection: load doc, send sync messages
       await documentHandler.handleConnection(ws, documentId, connectionId, client);
 
-      console.log(`[WS] Client ${connectionId} (${username}) connected to document ${documentId}`);
+      console.log(`[WS] Client ${connectionId} (${username}, ${permission}) connected to document ${documentId}`);
 
       // Mark setup complete and replay any buffered messages
       setupComplete = true;
@@ -136,7 +206,6 @@ export function createWebSocketServer(httpServer: HttpServer): WebSocketServer {
       }
       messageQueue.length = 0;
 
-      // If WebSocket closed while we were finishing setup, handle disconnect
       if (closedDuringSetup) {
         console.log(`[WS] Client ${connectionId} closed during setup for document ${documentId}`);
         await documentHandler.handleDisconnect(documentId, connectionId);
@@ -168,7 +237,6 @@ export function createWebSocketServer(httpServer: HttpServer): WebSocketServer {
     clearInterval(heartbeatInterval);
   });
 
-  // Track pong responses
   wss.on('connection', (ws: WebSocket) => {
     const extWs = ws as ExtendedWebSocket;
     extWs.isAlive = true;

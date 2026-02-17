@@ -7,6 +7,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { useDocumentStore } from '../store/documentStore';
+import { useAuthStore } from '../store/authStore';
 import Toolbar from './Toolbar';
 import PresenceList from './PresenceList';
 
@@ -116,8 +117,9 @@ export default function Editor({ documentId, username, userColor }: EditorProps)
     const ydoc = new Y.Doc();
     const wsUrl = getWsUrl();
 
+    const token = useAuthStore.getState().accessToken;
     const provider = new WebsocketProvider(wsUrl, documentId, ydoc, {
-      params: { username },
+      params: token ? { token } : { username },
     });
 
     const handleStatus = ({ status }: { status: string }) => {

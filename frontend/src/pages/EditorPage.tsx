@@ -3,16 +3,12 @@ import { useParams, Link, Navigate } from 'react-router-dom';
 import Editor from '../components/Editor';
 import { useDocument } from '../hooks/useDocument';
 import { useDocumentStore } from '../store/documentStore';
-
-const USER_COLORS = [
-  '#EF4444', '#F59E0B', '#10B981', '#3B82F6',
-  '#8B5CF6', '#EC4899', '#14B8A6', '#F97316',
-  '#6366F1', '#06B6D4', '#84CC16', '#E11D48',
-];
+import { useAuthStore } from '../store/authStore';
 
 export default function EditorPage() {
   const { documentId } = useParams<{ documentId: string }>();
-  const { currentUsername, currentDocumentTitle, isConnected, isSynced } = useDocumentStore();
+  const user = useAuthStore((s) => s.user);
+  const { currentDocumentTitle, isConnected, isSynced } = useDocumentStore();
 
   // Load document metadata via REST
   useDocument(documentId || '');
@@ -32,17 +28,10 @@ export default function EditorPage() {
     }
   }, [isConnected]);
 
-  // Deterministic color based on username
+  const username = user?.username || 'Anonymous';
   const userColor = useMemo(() => {
-    if (!currentUsername) return USER_COLORS[0];
-    const hash = Array.from(currentUsername).reduce((acc, c) => acc + c.charCodeAt(0), 0);
-    return USER_COLORS[hash % USER_COLORS.length];
-  }, [currentUsername]);
-
-  // Redirect to home if no username set
-  if (!currentUsername) {
-    return <Navigate to="/" replace />;
-  }
+    return user?.color || '#3B82F6';
+  }, [user]);
 
   if (!documentId) {
     return <Navigate to="/" replace />;
@@ -82,7 +71,7 @@ export default function EditorPage() {
                 {isConnected ? (isSynced ? 'Synced' : 'Syncing...') : 'Disconnected'}
               </span>
             </div>
-            <span className="text-xs text-gray-400">{currentUsername}</span>
+            <span className="text-xs text-gray-400">{username}</span>
           </div>
         </div>
       </header>
@@ -119,7 +108,7 @@ export default function EditorPage() {
         <div className="w-full max-w-4xl bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col" style={{ minHeight: '600px' }}>
           <Editor
             documentId={documentId}
-            username={currentUsername}
+            username={username}
             userColor={userColor}
           />
         </div>

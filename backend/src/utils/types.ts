@@ -6,6 +6,7 @@ export interface ConnectedClient {
   username: string;
   color: string;
   documentId: string;
+  permission: 'owner' | 'edit' | 'view';
 }
 
 export interface DocumentRoom {
@@ -18,6 +19,7 @@ export interface DocumentRoom {
 // Yjs protocol message type prefixes (first byte of binary messages)
 export const MESSAGE_SYNC = 0;
 export const MESSAGE_AWARENESS = 1;
+export const MESSAGE_VERSION_RESTORE = 3;
 
 // Application-level JSON message types
 export enum AppMessageType {

@@ -7,22 +7,37 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  username     String   @unique
+  color        String   @default("#3B82F6")
+  createdAt    DateTime @default(now())
+
+  sessions         DocumentSession[]
+  documents        Document[]        @relation("DocumentOwner")
+  shares           DocumentShare[]   @relation("SharedBy")
+  comments         Comment[]
+}
+
 model Document {
   id        String   @id @default(uuid())
   title     String
   content   Bytes?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  sessions  DocumentSession[]
+
+  ownerId  String
+  owner    User @relation("DocumentOwner", fields: [ownerId], references: [id])
+
+  sessions DocumentSession[]
+  shares   DocumentShare[]
+  versions DocumentVersion[]
+  comments Comment[]
 
   @@index([updatedAt])
-}
-
-model User {
-  id       String @id @default(uuid())
-  username String @unique
-  color    String @default("#3B82F6")
-  sessions DocumentSession[]
+  @@index([ownerId])
 }
 
 model DocumentSession {
@@ -37,3 +52,51 @@ model DocumentSession {
   @@index([documentId])
   @@index([userId])
 }
+
+model DocumentShare {
+  id         String    @id @default(uuid())
+  documentId String
+  document   Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  token      String    @unique @default(uuid())
+  permission String    @default("view")
+  createdBy  String
+  creator    User      @relation("SharedBy", fields: [createdBy], references: [id])
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime?
+
+  @@index([documentId])
+  @@index([token])
+}
+
+model DocumentVersion {
+  id            String   @id @default(uuid())
+  documentId    String
+  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  content       Bytes
+  versionNumber Int
+  createdAt     DateTime @default(now())
+
+  @@unique([documentId, versionNumber])
+  @@index([documentId, createdAt])
+}
+
+model Comment {
+  id            String    @id @default(uuid())
+  documentId    String
+  document      Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  content       String
+  commentMarkId String
+  parentId      String?
+  parent        Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies       Comment[] @relation("CommentReplies")
+  resolved      Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([documentId])
+  @@index([parentId])
+  @@index([commentMarkId])
+}
+

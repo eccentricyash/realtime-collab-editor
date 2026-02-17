@@ -1,8 +1,6 @@
 import { useEffect } from 'react';
 import { useDocumentStore } from '../store/documentStore';
-
-const _backendUrl = (import.meta.env.VITE_BACKEND_URL || '').trim();
-const API_BASE = _backendUrl ? `${_backendUrl}/api` : '/api';
+import { apiFetch } from '../utils/api';
 
 export function useDocument(documentId: string): void {
   const setCurrentDocument = useDocumentStore((s) => s.setCurrentDocument);
@@ -12,7 +10,7 @@ export function useDocument(documentId: string): void {
 
     let cancelled = false;
 
-    fetch(`${API_BASE}/documents/${documentId}`)
+    apiFetch(`/documents/${documentId}`)
       .then((res) => {
         if (!res.ok) throw new Error('Document not found');
         return res.json();
