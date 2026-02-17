@@ -2,9 +2,11 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import { useParams, Link, Navigate } from 'react-router-dom';
 import Editor from '../components/Editor';
 import ShareModal from '../components/ShareModal';
+import VersionHistoryPanel from '../components/VersionHistoryPanel';
 import { useDocument } from '../hooks/useDocument';
 import { useDocumentStore } from '../store/documentStore';
 import { useAuthStore } from '../store/authStore';
+import { useVersionStore } from '../store/versionStore';
 
 export default function EditorPage() {
   const { documentId } = useParams<{ documentId: string }>();
@@ -15,6 +17,9 @@ export default function EditorPage() {
   useDocument(documentId || '');
 
   const [showShareModal, setShowShareModal] = useState(false);
+  const versionPanelOpen = useVersionStore((s) => s.isOpen);
+  const setVersionPanelOpen = useVersionStore((s) => s.setOpen);
+  const previewHtml = useVersionStore((s) => s.previewHtml);
 
   // Track reconnection to show a brief "Reconnected" toast
   const [showReconnected, setShowReconnected] = useState(false);
@@ -59,6 +64,19 @@ export default function EditorPage() {
           </div>
 
           <div className="flex items-center gap-4">
+            {/* History button */}
+            <button
+              onClick={() => setVersionPanelOpen(!versionPanelOpen)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors font-medium ${
+                versionPanelOpen ? 'bg-gray-200 text-gray-700' : 'text-gray-500 hover:bg-gray-100'
+              }`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+              History
+            </button>
             {/* Share button */}
             <button
               onClick={() => setShowShareModal(true)}
@@ -120,15 +138,29 @@ export default function EditorPage() {
         </div>
       )}
 
-      {/* Editor */}
-      <main className="flex-1 flex justify-center py-6 px-4">
-        <div className="w-full max-w-4xl bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col" style={{ minHeight: '600px' }}>
-          <Editor
-            documentId={documentId}
-            username={username}
-            userColor={userColor}
-          />
+      {/* Editor + Version Panel */}
+      <main className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex justify-center py-6 px-4 overflow-y-auto">
+          {previewHtml ? (
+            <div className="w-full max-w-4xl bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col" style={{ minHeight: '600px' }}>
+              <div className="px-3 py-2 border-b border-gray-200 bg-amber-50">
+                <span className="text-xs font-medium text-amber-700">Preview — click "Restore this version" to apply</span>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 prose max-w-none" dangerouslySetInnerHTML={{ __html: previewHtml }} />
+            </div>
+          ) : (
+            <div className="w-full max-w-4xl bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col" style={{ minHeight: '600px' }}>
+              <Editor
+                documentId={documentId}
+                username={username}
+                userColor={userColor}
+              />
+            </div>
+          )}
         </div>
+        {versionPanelOpen && (
+          <VersionHistoryPanel documentId={documentId} />
+        )}
       </main>
 
       {/* Share modal */}

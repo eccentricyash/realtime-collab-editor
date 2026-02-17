@@ -5,6 +5,7 @@ import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import type WebSocket from 'ws';
 import { documentService } from '../services/documentService';
+import { versionService } from '../services/versionService';
 import { redisPub } from '../redis/redisClient';
 import { MESSAGE_SYNC, MESSAGE_AWARENESS, type ConnectedClient, type DocumentRoom } from '../utils/types';
 
@@ -13,6 +14,7 @@ const SAVE_DEBOUNCE_MS = 5000;
 const SEPARATOR = 0x7C; // '|' character code
 const WS_RATE_LIMIT = 30; // max messages per second per connection
 const WS_RATE_WINDOW = 1000; // 1 second
+const VERSION_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 class DocumentHandler {
   private docs: Map<string, Y.Doc> = new Map();
@@ -66,6 +68,9 @@ class DocumentHandler {
       clients: new Map(),
       saveTimeout: null,
       lastSavedAt: Date.now(),
+      versionTimeout: null,
+      lastVersionAt: Date.now(),
+      hasChangedSinceLastVersion: false,
     });
 
     const awareness = new awarenessProtocol.Awareness(doc);
@@ -314,6 +319,8 @@ class DocumentHandler {
     const room = this.rooms.get(documentId);
     if (!room) return;
 
+    room.hasChangedSinceLastVersion = true;
+
     if (room.saveTimeout) {
       clearTimeout(room.saveTimeout);
     }
@@ -323,6 +330,28 @@ class DocumentHandler {
         console.error(`[DocumentHandler] Save error for ${documentId}:`, err.message);
       });
     }, SAVE_DEBOUNCE_MS);
+
+    // Schedule auto version snapshot
+    if (!room.versionTimeout) {
+      room.versionTimeout = setTimeout(() => {
+        room.versionTimeout = null;
+        this.autoSnapshot(documentId).catch((err: Error) => {
+          console.error(`[DocumentHandler] Auto-snapshot error for ${documentId}:`, err.message);
+        });
+      }, VERSION_INTERVAL_MS);
+    }
+  }
+
+  private async autoSnapshot(documentId: string): Promise<void> {
+    const room = this.rooms.get(documentId);
+    const doc = this.docs.get(documentId);
+    if (!room || !doc || !room.hasChangedSinceLastVersion) return;
+
+    const state = Y.encodeStateAsUpdate(doc);
+    await versionService.createSnapshot(documentId, state);
+    room.lastVersionAt = Date.now();
+    room.hasChangedSinceLastVersion = false;
+    console.log(`[DocumentHandler] Auto-snapshot created for ${documentId}`);
   }
 
   /**
@@ -372,8 +401,11 @@ class DocumentHandler {
     this.messageCounts.delete(connectionId);
     console.log(`[DocumentHandler] Client ${connectionId} left document ${documentId} (${room.clients.size} remaining)`);
 
-    // If no more clients, save and clean up
+    // If no more clients, snapshot, save and clean up
     if (room.clients.size === 0) {
+      if (room.hasChangedSinceLastVersion) {
+        await this.autoSnapshot(documentId);
+      }
       await this.saveDocument(documentId);
       this.cleanupDocument(documentId);
     }
@@ -396,9 +428,8 @@ class DocumentHandler {
     }
 
     const room = this.rooms.get(documentId);
-    if (room?.saveTimeout) {
-      clearTimeout(room.saveTimeout);
-    }
+    if (room?.saveTimeout) clearTimeout(room.saveTimeout);
+    if (room?.versionTimeout) clearTimeout(room.versionTimeout);
     this.rooms.delete(documentId);
 
     console.log(`[DocumentHandler] Cleaned up document ${documentId}`);

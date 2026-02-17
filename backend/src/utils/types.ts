@@ -14,6 +14,9 @@ export interface DocumentRoom {
   clients: Map<string, ConnectedClient>;
   saveTimeout: ReturnType<typeof setTimeout> | null;
   lastSavedAt: number;
+  versionTimeout: ReturnType<typeof setTimeout> | null;
+  lastVersionAt: number;
+  hasChangedSinceLastVersion: boolean;
 }
 
 // Yjs protocol message type prefixes (first byte of binary messages)

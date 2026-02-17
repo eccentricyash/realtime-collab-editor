@@ -9,6 +9,7 @@ import { documentHandler } from './websocket/documentHandler';
 import prisma from './db/prismaClient';
 import authRouter from './routes/auth';
 import { documentShareRouter, sharedAccessRouter } from './routes/documents';
+import { versionRouter } from './routes/versions';
 import { requireAuth, AuthRequest } from './middleware/auth';
 import { authLimiter, apiLimiter } from './middleware/rateLimiter';
 
@@ -39,6 +40,9 @@ app.use('/api/documents', apiLimiter);
 
 // Share management routes (protected, under /api/documents)
 app.use('/api/documents', documentShareRouter);
+// Version routes (under /api/documents and /api for version-specific endpoints)
+app.use('/api/documents', versionRouter);
+app.use('/api', versionRouter);
 // Public shared document access (under /api)
 app.use('/api', sharedAccessRouter);
 
